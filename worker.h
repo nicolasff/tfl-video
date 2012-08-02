@@ -25,7 +25,7 @@ private:
 	Gtfs &m_g;
 	Image m_img, &m_city;
 
-	std::map<std::string,int> m_colorMap;
+	std::map<std::string,Palette> m_colorMap;
 
 	double m_ratio;
 	int m_second;

@@ -30,6 +30,19 @@ CsvReader::get() {
 	return ret;
 }
 
+
+int
+CsvReader::keyIndex(std::string key) const {
+	int offset = 0;
+	for (auto header_key: m_keys) {
+		if (header_key == key) {
+			return offset;
+		}
+		offset++;
+	}
+	return -1;
+}
+
 bool
 CsvReader::eof() const {
 	return m_file.eof();

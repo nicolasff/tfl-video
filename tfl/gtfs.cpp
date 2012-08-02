@@ -4,8 +4,11 @@
 #include <iostream>
 #include <set>
 #include <dirent.h>
+#include <glob.h>
+#include <filesystem>
 
 using namespace std;
+namespace fs = std::filesystem;
 
 Gtfs::Gtfs(int crossover)
 	: m_crossover(crossover)
@@ -15,54 +18,91 @@ Gtfs::Gtfs(int crossover)
 void
 Gtfs::loadDirectory(string dir) {
 
-	loadRoutes(dir + "/routes.txt");
-	loadTrips(dir + "/trips.txt");
-	loadStops(dir + "/stops.txt");
-	loadStopTimes(dir + "/stop_times.txt");
+	loadRoutes(findFile(dir + "/routes.*"));
+	loadTrips(findFile(dir + "/trips.*"));
+	loadStops(findFile(dir + "/stops.*"));
+	loadStopTimes(findFile(dir + "/stop*times.*"));
 
 	m_dirs.push_back(dir);
+}
+
+std::string
+Gtfs::findFile(std::string pattern) {
+	glob_t glob_result;
+	::memset(&glob_result, 0, sizeof(glob_result));
+	int return_value = glob(pattern.c_str(), GLOB_TILDE, NULL, &glob_result);
+    if(return_value != 0) {
+        globfree(&glob_result);
+		cerr << "No file matching " << pattern << endl;
+		return "";
+	}
+
+	// number of matches: glob_result.gl_pathc
+	return glob_result.gl_pathv[0];
 }
 
 void
 Gtfs::loadRoutes(std::string filename) {
 
+	cout << "Loading routes from " << filename << endl;
 	CsvReader csv(filename);
+	int idx_route_id = csv.keyIndex("route_id"),
+		idx_short_name = csv.keyIndex("route_short_name"),
+		idx_long_name = csv.keyIndex("route_long_name");
 
+	int debug = 0;
 	while(!csv.eof()) {
 		CsvObject line = csv.get();
 		if(line.size() != csv.dimensions())
 			continue;
 
 		// decode route
-		string id = line[route_id];
+		string id = line[idx_route_id];
 		Route route;
-		route.name = line[route_short_name];
-		route.desc = line[route_desc];
+		route.name = line[idx_short_name];
+		route.desc = line[idx_long_name];
 		m_routes.insert(make_pair(id, route));
+
+		if (debug++ < 5) {
+			cout << "Loaded route: id=[" << id << "], name=[" << route.name << "], desc=[" << route.desc << "]" << endl;
+		}
 	}
+	cout << "Loaded " << m_routes.size() << " routes" << endl;
 }
 
 void
 Gtfs::loadTrips(std::string filename) {
 
+	cout << "Loading trips from " << filename << endl;
 	CsvReader csv(filename);
+	int idx_route_id = csv.keyIndex("route_id"),
+		idx_trip_id = csv.keyIndex("trip_id");
 
+	int debug = 0;
 	while(!csv.eof()) {
 		CsvObject line = csv.get();
 		if(line.size() != csv.dimensions())
 			continue;
 
 		// decode trip
-		string route_id = line[0];
-		string trip_id = line[2];
+		string route_id = line[idx_route_id];
+		string trip_id = line[idx_trip_id];
 		m_route_by_trip.insert(make_pair(trip_id, route_id));
+		if (debug++ < 5) {
+			cout << "Loaded trip: trip_id=[" << trip_id << "], route_id=[" << route_id << "]" << endl;
+		}
 	}
+	cout << "Loaded " << m_route_by_trip.size() << " trips" << endl;
 }
 
 void
 Gtfs::loadStops(string filename) {
 
+	cout << "Loading stops from " << filename << endl;
 	CsvReader csv(filename);
+	int idx_stop_id = csv.keyIndex("stop_id"),
+		idx_stop_lat = csv.keyIndex("stop_lat"),
+		idx_stop_lon = csv.keyIndex("stop_lon");
 
 	while(!csv.eof()) {
 		CsvObject line = csv.get();
@@ -70,12 +110,13 @@ Gtfs::loadStops(string filename) {
 			continue;
 
 		// decode stop
-		string id = line[stop_id];
+		string id = line[idx_stop_id];
 		Stop stop;
-		stop.lat = atof(line[stop_lat].c_str());
-		stop.lon = atof(line[stop_lon].c_str());
+		stop.lat = atof(line[idx_stop_lat].c_str());
+		stop.lon = atof(line[idx_stop_lon].c_str());
 		m_stops.insert(make_pair(id, stop));
 	}
+	cout << "Loaded " << m_stops.size() << " stops" << endl;
 }
 
 vector<Vehicle>
@@ -108,27 +149,13 @@ Gtfs::getTrainsAt(int t) {
 
 void
 Gtfs::findFiles(string src, vector<string> &directories) {
-
-	set<string> files;
-
-	// read files
-	DIR *d = opendir(src.c_str());
-	struct dirent *f;
-	while ((f = readdir(d))) {
-		if(f->d_name[0] == '.') continue;
-
-		if(f->d_type == DT_DIR) {
-			findFiles((src + "/") + f->d_name, directories);
-		} else if(f->d_type == DT_REG) {
-			files.insert(f->d_name);
-		}
-	}
-	closedir(d);
-
-	string expected[] = {"stops.txt", "routes.txt", "trips.txt"};
+	string expected[] = {"/stops.*", "/routes.*", "/trips.*"};
 	for(string s : expected) {
-		if(files.find(s) == files.end())
+		string pattern = src + s;
+		if(findFile(pattern) == "") {
+			cerr << "Not including [" << src << "] since we couldn't find [" << s << "]" << endl;
 			return;
+		}
 	}
 
 	// found everything.
@@ -139,11 +166,18 @@ Gtfs::findFiles(string src, vector<string> &directories) {
 void
 Gtfs::loadStopTimes(string filename) {
 
+	cout << "Loading stop times from " << filename << endl;
 	CsvReader csv(filename);
+	int idx_trip_id = csv.keyIndex("trip_id"),
+		idx_stop_id = csv.keyIndex("stop_id"),
+		idx_arrival_time = csv.keyIndex("arrival_time"),
+		idx_departure_time = csv.keyIndex("departure_time"),
+		idx_order = csv.keyIndex("stop_sequence");
 
 	Halt last;
 	last.order = -1;
 
+	int loaded = 0;
 	while(!csv.eof()) {
 		CsvObject line = csv.get();
 		if(line.size() != csv.dimensions())
@@ -151,19 +185,24 @@ Gtfs::loadStopTimes(string filename) {
 
 		Halt h;
 
-		h.trip_id = line[0];
-		h.stop = line[3];
-		h.arrival = seconds(line[1]);
-		h.departure = seconds(line[2]);
+		h.trip_id = line[idx_trip_id];
+		h.stop = line[idx_stop_id];
+		h.arrival = seconds(line[idx_arrival_time]);
+		h.departure = seconds(line[idx_departure_time]);
 
 		// watch out for cross-over
 		if(h.arrival < h.departure)
 			h.arrival += SECONDS_PER_DAY;
 
-		h.order = atoi(line[4].c_str());
+		h.order = atoi(line[idx_order].c_str());
 
+		loaded++;
+		if (loaded % 100000 == 0) {
+			cout << "Loaded " << loaded << " stop times" << endl;
+		}
 		m_halts.push_back(h);
 	}
+	cout << "Loaded " << m_halts.size() << " stop times" << endl;
 }
 
 int
@@ -204,7 +243,7 @@ Gtfs::interpolate(Halt &from, Halt &to, int second) {
 	Route r = m_routes[route_id];
 
 	// compute coords
-	return Vehicle(r.name, sfrom.lat + ratio * (sto.lat - sfrom.lat),
+	return Vehicle(route_id, r.name, sfrom.lat + ratio * (sto.lat - sfrom.lat),
 			 sfrom.lon + ratio * (sto.lon - sfrom.lon));
 }
 

@@ -9,11 +9,11 @@ typedef std::vector<std::string> CsvObject;
 enum {
 	stop_id = 0,
 	stop_name,
-	stop_desc,
+	//stop_desc,
 	stop_lat,
 	stop_lon,
-	stop_zone_id,
-	stop_url
+	//stop_zone_id,
+	//stop_url
 };
 
 struct Coords {
@@ -26,16 +26,20 @@ struct Coords {
 typedef Coords Stop;
 
 struct Vehicle : public Coords{
-	Vehicle(std::string line_, double lat_ = 0.0f, double lon_ = 0.0f)
+	Vehicle(std::string route_id_, std::string line_, double lat_ = 0.0f, double lon_ = 0.0f)
 		: Coords(lat_, lon_)
+		, route_id(route_id_)
 		, line(line_) {}
 
+	std::string route_id;
 	std::string line;
 };
 
 typedef Coords Stop;
 
-enum {
+enum
+{
+	/*
 	route_id = 0,
 	route_agency_id,
 	route_short_name,
@@ -45,6 +49,13 @@ enum {
 	route_url,
 	route_color,
 	route_text_color
+	*/
+	route_id = 0,
+	route_agency_id,
+	route_color,
+	route_short_name,
+	route_long_name,
+	route_type,
 };
 
 struct Route {

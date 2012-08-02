@@ -15,9 +15,11 @@ public:
 	void loadDirectory(std::string dir);
 	std::vector<Vehicle> getTrainsAt(int second);
 
+	static std::string findFile(std::string pattern);
 	static void findFiles(std::string src, std::vector<std::string> &directories);
 
 private:
+
 	void loadRoutes(std::string filename);
 	void loadTrips(std::string filename);
 	void loadStops(std::string filename);

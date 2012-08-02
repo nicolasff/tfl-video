@@ -13,6 +13,7 @@ public:
 	CsvReader(std::string filename);
 
 	std::vector<std::string> get();
+	int keyIndex(std::string key) const;
 	bool eof() const;
 	size_t dimensions() const;
 
